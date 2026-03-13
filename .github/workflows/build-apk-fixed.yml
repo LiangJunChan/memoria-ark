@@ -1,0 +1,51 @@
+name: Build APK Fixed
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies and build
+      working-directory: frontend
+      run: |
+        npm install
+        npm run build
+    
+    - name: Initialize Capacitor Android
+      working-directory: frontend
+      run: |
+        # Check if android directory exists, if not create it
+        if [ ! -d "android" ]; then
+          npx cap add android
+        fi
+        npx cap copy android
+        npx cap update android
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Build APK
+      working-directory: frontend/android
+      run: ./gradlew assembleDebug --no-daemon
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: memoria-ark-apk
+        path: frontend/android/app/build/outputs/apk/debug/*.apk

@@ -3,7 +3,7 @@ import { showToast, showDialog } from 'vant';
 
 // 创建axios实例
 const service = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: 'http://8.138.243.181:5000/api',
   timeout: 10000,
   withCredentials: true,
 });

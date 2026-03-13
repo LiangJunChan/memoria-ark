@@ -1,92 +1,86 @@
 name: Build APK
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 30
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true  # 解决Node.js 20弃用警告
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-    
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-    
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-    
-    - name: Install Android SDK components
-      run: |
-        sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-    
-    - name: Install dependencies
-      working-directory: frontend
-      run: |
-        echo "Installing npm dependencies..."
-        npm ci
-        echo "Dependencies installed successfully!"
-    
-    - name: Build web app
-      working-directory: frontend
-      run: |
-        echo "Building web app..."
-        npm run build
-        echo "Web app built successfully!"
-        ls -la dist/
-    
-    - name: Check Capacitor configuration
-      working-directory: frontend
-      run: |
-        echo "Checking Capacitor configuration..."
-        ls -la
-        cat capacitor.config.json
-        echo "Android directory exists:"
-        ls -la android/ || echo "No android directory found!"
-    
-    - name: Sync Capacitor
-      working-directory: frontend
-      run: |
-        echo "Syncing Capacitor..."
-        npx cap sync android --verbose
-        echo "Capacitor sync completed!"
-    
-    - name: Build APK
-      working-directory: frontend/android
-      run: |
-        echo "Building APK..."
-        ./gradlew assembleDebug --no-daemon --info
-        echo "APK build completed!"
-        ls -la app/build/outputs/apk/debug/
-    
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: memoria-ark-apk
-        path: frontend/android/app/build/outputs/apk/debug/*.apk
-        retention-days: 30
-    
-    - name: Upload logs on failure
-      uses: actions/upload-artifact@v4
-      if: failure()
-      with:
-        name: build-logs
-        path: |
-          frontend/android/app/build/outputs/logs/
-          frontend/npm-debug.log
-        retention-days: 7
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Fresh Capacitor setup (fix sync error)
+        working-directory: frontend
+        run: |
+          echo "=== Fresh Capacitor Setup ==="
+          # 完全删除旧的android目录，强制重新添加
+          rm -rf android
+          echo "Removed old android directory"
+          
+          # 重新添加Android平台
+          npx cap add android
+          echo "Added Android platform"
+          
+          # 同步资源和配置
+          npx cap sync android
+          echo "Capacitor sync completed successfully!"
+          
+          # 验证android目录
+          ls -la android/
+
+      - name: Build APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: memoria-ark-apk
+          path: frontend/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - name: Upload logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-logs
+          path: |
+            frontend/android/app/build/outputs/logs/
+            frontend/*.log

@@ -1,0 +1,13 @@
+[2026-03-12 15:26:16 +0800] [19794] [INFO] Starting gunicorn 20.1.0
+[2026-03-12 15:26:16 +0800] [19794] [INFO] Listening at: http://0.0.0.0:5000 (19794)
+[2026-03-12 15:26:16 +0800] [19794] [INFO] Using worker: sync
+[2026-03-12 15:26:16 +0800] [19798] [INFO] Booting worker with pid: 19798
+[2026-03-12 15:26:16 +0800] [19799] [INFO] Booting worker with pid: 19799
+[2026-03-12 15:26:17 +0800] [19801] [INFO] Booting worker with pid: 19801
+[2026-03-12 15:26:17 +0800] [19802] [INFO] Booting worker with pid: 19802
+[2026-03-13 09:32:44 +0800] [19794] [INFO] Handling signal: term
+[2026-03-13 09:32:44 +0800] [19801] [INFO] Worker exiting (pid: 19801)
+[2026-03-13 09:32:44 +0800] [19802] [INFO] Worker exiting (pid: 19802)
+[2026-03-13 09:32:44 +0800] [19798] [INFO] Worker exiting (pid: 19798)
+[2026-03-13 09:32:44 +0800] [19799] [INFO] Worker exiting (pid: 19799)
+[2026-03-13 09:32:45 +0800] [19794] [INFO] Shutting down: Master

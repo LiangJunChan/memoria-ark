@@ -1,0 +1,86 @@
+# 阿里云效 CodePipeline 配置
+# 文件名: .alibaba/pipeline.yml
+# 将此文件放入代码仓库，自动触发构建
+
+version: 1.0
+name: memoria-ark-android-build
+
+trigger:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+
+stages:
+  - stage: build
+    name: "构建APK"
+    jobs:
+      - job: android_build
+        type: linux
+        image: node:18
+        timeout: 30m
+        
+        steps:
+          - step: setup_java
+            name: "安装Java 17"
+            script:
+              - apt-get update
+              - apt-get install -y wget apt-transport-https gnupg
+              - wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add -
+              - echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list
+              - apt-get update
+              - apt-get install -y temurin-17-jdk
+              - export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+              - java -version
+          
+          - step: setup_android_sdk
+            name: "安装Android SDK"
+            script:
+              - export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+              - export ANDROID_HOME=/opt/android-sdk
+              - mkdir -p $ANDROID_HOME
+              - cd $ANDROID_HOME
+              - wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+              - unzip commandlinetools-linux-11076708_latest.zip
+              - mkdir -p cmdline-tools/latest
+              - mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/NOTICE.txt cmdline-tools/latest/ 2>/dev/null || true
+              - export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+              - yes | sdkmanager --licenses
+              - sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          
+          - step: install_deps
+            name: "安装依赖"
+            script:
+              - cd frontend
+              - npm ci
+          
+          - step: build_web
+            name: "构建Web"
+            script:
+              - cd frontend
+              - npm run build
+          
+          - step: sync_capacitor
+            name: "同步Capacitor"
+            script:
+              - cd frontend
+              - npx cap sync android
+          
+          - step: build_apk
+            name: "构建APK"
+            script:
+              - export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+              - export ANDROID_HOME=/opt/android-sdk
+              - export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+              - cd frontend/android
+              - ./gradlew assembleDebug --no-daemon
+          
+          - step: upload_artifact
+            name: "上传APK"
+            script:
+              - echo "APK构建完成"
+              - ls -lh frontend/android/app/build/outputs/apk/debug/*.apk
+            artifacts:
+              - name: apk
+                path: frontend/android/app/build/outputs/apk/debug/*.apk

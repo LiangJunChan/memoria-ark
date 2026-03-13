@@ -1,0 +1,140 @@
+# 阿里云效 CodePipeline 完整配置
+# 使用方法：
+# 1. 登录 https://devops.aliyun.com
+# 2. 进入「流水线」→「新建流水线」
+# 3. 选择「空白模板」
+# 4. 流水线名称：memoria-ark-android
+# 5. 代码源选择您的GitHub/GitLab仓库
+# 6. 将下面的YAML内容粘贴到「流水线编辑」页面
+# 7. 点击「保存并运行」
+# 8. 等待5-10分钟，下载APK文件
+
+version: 1.0
+name: memoria-ark-android-build
+displayName: 忆存·数字方舟Android构建
+
+trigger:
+  push:
+    branches:
+      include:
+        - main
+        - master
+        - develop
+        - feature/*
+  manual: true
+
+stages:
+  - stage: build
+    displayName: 构建阶段
+    jobs:
+      - job: android_build
+        displayName: Android APK构建
+        type: linux
+        image: node:18
+        timeout: 30m
+        
+        steps:
+          - step: setup_environment
+            name: 环境准备
+            script:
+              - echo "========== 开始构建 =========="
+              - echo "构建时间: $(date)"
+              - echo "Node版本: $(node -v)"
+              - echo "NPM版本: $(npm -v)"
+              - echo "当前目录: $(pwd)"
+              - ls -la
+          
+          - step: install_java
+            name: 安装Java 17
+            script:
+              - echo "========== 安装Java 17 =========="
+              - apt-get update -qq
+              - apt-get install -y -qq wget apt-transport-https gnupg > /dev/null 2>&1
+              - wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | apt-key add -
+              - echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list
+              - apt-get update -qq
+              - apt-get install -y -qq temurin-17-jdk > /dev/null 2>&1
+              - export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+              - export PATH=$JAVA_HOME/bin:$PATH
+              - echo "Java版本:"
+              - java -version
+          
+          - step: install_android_sdk
+            name: 安装Android SDK
+            script:
+              - echo "========== 安装Android SDK =========="
+              - export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+              - export PATH=$JAVA_HOME/bin:$PATH
+              - export ANDROID_HOME=/opt/android-sdk
+              - export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+              - mkdir -p $ANDROID_HOME
+              - cd $ANDROID_HOME
+              - echo "下载Android SDK..."
+              - wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+              - echo "解压Android SDK..."
+              - unzip -q commandlinetools-linux-11076708_latest.zip
+              - mkdir -p cmdline-tools/latest
+              - mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/NOTICE.txt cmdline-tools/latest/ 2>/dev/null || true
+              - echo "接受许可证..."
+              - yes | sdkmanager --licenses > /dev/null 2>&1 || true
+              - echo "安装SDK组件..."
+              - sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1
+              - echo "Android SDK安装完成"
+          
+          - step: install_node_deps
+            name: 安装Node依赖
+            script:
+              - echo "========== 安装Node依赖 =========="
+              - cd frontend
+              - echo "安装npm依赖..."
+              - npm ci --silent
+              - echo "依赖安装完成"
+          
+          - step: build_web
+            name: 构建Web应用
+            script:
+              - echo "========== 构建Web应用 =========="
+              - cd frontend
+              - npm run build
+              - echo "Web构建完成"
+              - ls -la dist/
+          
+          - step: sync_capacitor
+            name: 同步Capacitor
+            script:
+              - echo "========== 同步Capacitor =========="
+              - cd frontend
+              - npx cap sync android
+              - echo "Capacitor同步完成"
+          
+          - step: build_apk
+            name: 构建APK
+            script:
+              - echo "========== 构建APK =========="
+              - export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+              - export PATH=$JAVA_HOME/bin:$PATH
+              - export ANDROID_HOME=/opt/android-sdk
+              - export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+              - cd frontend/android
+              - echo "开始Gradle构建..."
+              - ./gradlew assembleDebug --no-daemon
+              - echo "APK构建完成"
+              - ls -la app/build/outputs/apk/debug/
+          
+          - step: upload_artifact
+            name: 上传APK
+            script:
+              - echo "========== 上传APK =========="
+              - ls -lh frontend/android/app/build/outputs/apk/debug/*.apk
+              - echo "APK文件已生成，请在构建产物中下载"
+            artifacts:
+              - name: memoria-ark-apk
+                path: frontend/android/app/build/outputs/apk/debug/*.apk
+
+# 构建通知配置（可选）
+notifications:
+  email:
+    recipients:
+      - your-email@example.com
+    on_success: always
+    on_failure: always

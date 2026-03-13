@@ -1,0 +1,126 @@
+name: Build APK - Robust
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Cache npm dependencies
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+    
+    - name: Install dependencies
+      working-directory: frontend
+      run: |
+        echo "Installing dependencies..."
+        npm ci
+        echo "Dependencies installed"
+    
+    - name: Build web application
+      working-directory: frontend
+      run: |
+        echo "Building web app..."
+        npm run build
+        echo "Build completed"
+        ls -la dist/
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Install Android SDK components
+      run: |
+        echo "Installing Android SDK components..."
+        sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+        echo "SDK components installed"
+    
+    - name: Check and setup Capacitor
+      working-directory: frontend
+      run: |
+        echo "Checking Capacitor setup..."
+        
+        # Check if capacitor.config.json exists
+        if [ ! -f "capacitor.config.json" ]; then
+          echo "ERROR: capacitor.config.json not found!"
+          exit 1
+        fi
+        echo "capacitor.config.json found"
+        
+        # Check android directory
+        if [ ! -d "android" ]; then
+          echo "Android directory not found, adding Capacitor Android platform..."
+          npx cap add android
+        else
+          echo "Android directory exists"
+        fi
+        
+        # List android directory contents
+        echo "Android directory contents:"
+        ls -la android/
+    
+    - name: Sync Capacitor
+      working-directory: frontend
+      run: |
+        echo "Syncing Capacitor..."
+        npx cap sync android || {
+          echo "Capacitor sync failed, attempting manual sync..."
+          npx cap copy android
+          npx cap update android
+        }
+        echo "Capacitor sync completed"
+    
+    - name: Build APK with Gradle
+      working-directory: frontend/android
+      run: |
+        echo "Building APK with Gradle..."
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace || {
+          echo "Gradle build failed, trying with more verbose output..."
+          ./gradlew assembleDebug --no-daemon --info 2>&1 | tail -200
+          exit 1
+        }
+        echo "APK build completed successfully!"
+        echo "Output files:"
+        ls -lh app/build/outputs/apk/debug/
+    
+    - name: Upload APK as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: memoria-ark-apk
+        path: frontend/android/app/build/outputs/apk/debug/*.apk
+        retention-days: 30
+    
+    - name: Upload build logs on failure
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: build-failure-logs
+        path: |
+          frontend/android/gradle.log
+          frontend/android/app/build/outputs/logs/
+          frontend/npm-debug.log
+        retention-days: 7

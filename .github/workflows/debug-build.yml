@@ -1,0 +1,46 @@
+name: Debug Build - Test Dependencies
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (no cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Debug - Check files
+        working-directory: frontend
+        run: |
+          echo "=== 当前目录文件 ==="
+          ls -la
+          echo "=== package.json 内容 ==="
+          cat package.json
+          echo "=== package-lock.json 是否存在 ==="
+          ls -la package-lock.json || echo "不存在"
+
+      - name: Test npm install
+        working-directory: frontend
+        run: |
+          echo "=== 开始安装依赖 ==="
+          npm install 2>&1
+          echo "=== 安装完成，检查node_modules ==="
+          ls -la node_modules | head -20
+
+      - name: Test build
+        working-directory: frontend
+        run: |
+          echo "=== 开始构建 ==="
+          npm run build 2>&1
+          echo "=== 构建完成，检查dist ==="
+          ls -la dist/

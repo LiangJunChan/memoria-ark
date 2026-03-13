@@ -36,31 +36,57 @@ jobs:
     
     - name: Install dependencies
       working-directory: frontend
-      run: npm ci
+      run: |
+        echo "Installing npm dependencies..."
+        npm ci
+        echo "Dependencies installed successfully!"
     
     - name: Build web app
       working-directory: frontend
-      run: npm run build
+      run: |
+        echo "Building web app..."
+        npm run build
+        echo "Web app built successfully!"
+        ls -la dist/
+    
+    - name: Check Capacitor configuration
+      working-directory: frontend
+      run: |
+        echo "Checking Capacitor configuration..."
+        ls -la
+        cat capacitor.config.json
+        echo "Android directory exists:"
+        ls -la android/ || echo "No android directory found!"
     
     - name: Sync Capacitor
       working-directory: frontend
-      run: npx cap sync android
+      run: |
+        echo "Syncing Capacitor..."
+        npx cap sync android --verbose
+        echo "Capacitor sync completed!"
     
     - name: Build APK
       working-directory: frontend/android
-      run: ./gradlew assembleDebug --no-daemon
+      run: |
+        echo "Building APK..."
+        ./gradlew assembleDebug --no-daemon --info
+        echo "APK build completed!"
+        ls -la app/build/outputs/apk/debug/
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: memoria-ark-apk
         path: frontend/android/app/build/outputs/apk/debug/*.apk
         retention-days: 30
     
-    - name: Upload APK to Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
+    - name: Upload logs on failure
+      uses: actions/upload-artifact@v4
+      if: failure()
       with:
-        files: frontend/android/app/build/outputs/apk/debug/*.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: build-logs
+        path: |
+          frontend/android/app/build/outputs/logs/
+          frontend/npm-debug.log
+        retention-days: 7

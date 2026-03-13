@@ -1,0 +1,118 @@
+name: Build APK v2
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Verify environment
+      run: |
+        echo "=== Environment Verification ==="
+        java -version
+        node -v
+        npm -v
+        echo "ANDROID_HOME: $ANDROID_HOME"
+    
+    - name: Install dependencies
+      working-directory: frontend
+      run: |
+        echo "Installing npm dependencies..."
+        npm ci
+        echo "Dependencies installed successfully"
+    
+    - name: Build web app
+      working-directory: frontend
+      run: |
+        echo "Building web application..."
+        npm run build
+        echo "Build completed"
+        ls -la dist/
+    
+    - name: Check Capacitor configuration
+      working-directory: frontend
+      run: |
+        echo "=== Capacitor Configuration Check ==="
+        echo "capacitor.config.json:"
+        cat capacitor.config.json || echo "Not found"
+        echo ""
+        echo "Checking for android directory:"
+        ls -ld android 2>/dev/null || echo "android directory not found"
+        echo ""
+        echo "Checking for node_modules/.bin/cap:"
+        ls -la node_modules/.bin/cap 2>/dev/null || echo "cap command not found"
+    
+    - name: Add Android platform if needed
+      working-directory: frontend
+      run: |
+        if [ ! -d "android" ]; then
+          echo "Android platform not found, adding it..."
+          npx cap add android
+          echo "Android platform added successfully"
+        else
+          echo "Android platform already exists"
+        fi
+    
+    - name: Sync Capacitor
+      working-directory: frontend
+      run: |
+        echo "Syncing Capacitor with Android..."
+        npx cap sync android --verbose || {
+          echo "Capacitor sync failed, trying alternative approach..."
+          npx cap copy android
+          npx cap update android
+        }
+        echo "Capacitor sync completed"
+    
+    - name: Build APK
+      working-directory: frontend/android
+      run: |
+        echo "Building APK..."
+        ./gradlew assembleDebug --no-daemon --stacktrace || {
+          echo "Build failed, checking for errors..."
+          ./gradlew assembleDebug --no-daemon --info 2>&1 | tail -100
+          exit 1
+        }
+        echo "APK built successfully"
+        ls -lh app/build/outputs/apk/debug/
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: memoria-ark-apk
+        path: frontend/android/app/build/outputs/apk/debug/*.apk
+        retention-days: 30
+    
+    - name: Upload logs on failure
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: build-logs
+        path: |
+          frontend/android/build.log
+          frontend/npm-debug.log
+          frontend/android/app/build/outputs/logs/
+          frontend/android/gradle.log

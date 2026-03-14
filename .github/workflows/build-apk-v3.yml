@@ -1,0 +1,82 @@
+name: Build Android APK v3 (Fixed)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          # 删除旧的 node_modules 和 lock 文件，重新安装
+          rm -rf node_modules package-lock.json
+          npm install
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm run build
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
+
+      - name: Initialize Capacitor (if needed)
+        working-directory: frontend
+        run: |
+          # Check if android directory exists
+          if [ ! -d "android" ]; then
+            echo "Android platform not found, adding..."
+            npx cap add android || echo "Android platform may already exist"
+          fi
+
+      - name: Sync Capacitor
+        working-directory: frontend
+        run: |
+          npx cap sync android
+
+      - name: Build Android APK (Debug)
+        working-directory: frontend/android
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Build Android APK (Release)
+        working-directory: frontend/android
+        run: |
+          ./gradlew assembleRelease --stacktrace
+        continue-on-error: true
+
+      - name: Upload Release APK artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: app-release-apk
+          path: frontend/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: warn
